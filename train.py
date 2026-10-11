@@ -8,12 +8,12 @@ import config
 from src import SnakeEnv, Transition
 from src.agents import DQNAgent
 from src.buffers import ReplayBuffer
+from src.logs import ask_log_path
 from src.networks import MLP
 from src.policies import EpsilonGreedyPolicy, GreedyPolicy
 
 SEED = 67
 CHECKPOINT_DIR = Path("checkpoints")
-LOG_PATH = Path("logs") / "training.csv"
 LOG_EVERY = 10      # print a progress line every N episodes
 WINDOW = 100        # moving-average window used for "best model" tracking
 
@@ -24,6 +24,8 @@ LOG_FIELDS = [
 
 
 def main():
+    log_path = ask_log_path("training.csv")
+
     torch.manual_seed(SEED)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -67,12 +69,12 @@ def main():
     )
 
     CHECKPOINT_DIR.mkdir(exist_ok=True)
-    LOG_PATH.parent.mkdir(exist_ok=True)
+    log_path.parent.mkdir(parents=True, exist_ok=True)
 
     recent_scores = deque(maxlen=WINDOW)
     best_avg_score = float("-inf")
 
-    with LOG_PATH.open("w", newline="", encoding="utf-8") as log_file:
+    with log_path.open("w", newline="", encoding="utf-8") as log_file:
         writer = csv.DictWriter(log_file, fieldnames=LOG_FIELDS)
         writer.writeheader()
 
@@ -146,7 +148,7 @@ def main():
             torch.save(model.state_dict(), CHECKPOINT_DIR / "final.pt")
 
     print(f"Done. Best moving-average score: {best_avg_score:.2f}")
-    print(f"Weights: {CHECKPOINT_DIR}/  |  metrics: {LOG_PATH}")
+    print(f"Weights: {CHECKPOINT_DIR}/  |  metrics: {log_path}")
 
 
 if __name__ == "__main__":

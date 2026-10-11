@@ -24,8 +24,10 @@ from typing import Any, Callable
 
 CELL_SIZE = 24
 HUD_HEIGHT = 56
-FPS = 60
+FPS = 60                # manual play
+SIM_FPS = 120           # policy evaluation window
 MOVE_INTERVAL_MS = 120
+END_PAUSE_MS = 150      # pause on the game-over overlay between evaluation episodes
 
 BACKGROUND = (17, 24, 32)
 BOARD_COLOR = (23, 33, 43)
@@ -283,6 +285,7 @@ def run_simulated(
     *,
     episodes: int = 1,
     move_interval_ms: int = MOVE_INTERVAL_MS,
+    fps: int = SIM_FPS,
     csv_path: str | Path | None = None,
     checkpoint: int | str | None = None,
 ) -> list[dict]:
@@ -297,7 +300,11 @@ def run_simulated(
         episodes:
             Number of evaluation episodes to run.
         move_interval_ms:
-            Milliseconds between environment steps.
+            Milliseconds between environment steps. When this is shorter than
+            one frame, several steps run per rendered frame, so the frames in
+            between are skipped rather than drawn.
+        fps:
+            Rendering frame rate of the evaluation window.
         csv_path:
             Optional CSV path for appending evaluation results.
         checkpoint:
@@ -354,8 +361,7 @@ def run_simulated(
             info = {}
 
             while running and not (terminated or truncated):
-                frame_ms = clock.tick(FPS)
-                elapsed_ms += frame_ms
+                elapsed_ms += clock.tick(fps)
 
                 # Keep the event queue responsive even while the model is playing automatically.
                 for event in pygame.event.get():
@@ -371,9 +377,11 @@ def run_simulated(
                     interrupted = True
                     break
 
-                if elapsed_ms >= move_interval_ms:
-                    elapsed_ms = 0
+                # Run every step that has come due since the last frame, then
+                # draw once. At high speeds that means many steps per frame.
+                due, elapsed_ms = divmod(elapsed_ms, move_interval_ms)
 
+                for _ in range(int(due)):
                     # Inference only. The agent's implementation
                     # and the environment's transition logic are separate.
                     action = action_fn(observation)
@@ -393,6 +401,9 @@ def run_simulated(
 
                     total_reward += float(reward)
                     steps += 1
+
+                    if terminated or truncated:
+                        break
 
                 draw_game(
                     screen,
@@ -431,7 +442,8 @@ def run_simulated(
 
             # Briefly show the final board before starting the next evaluation episode.
             if running and not interrupted:
-                pygame.time.wait(400)
+                pygame.time.wait(END_PAUSE_MS)
+                clock.tick()  # don't count the pause as elapsed play time
 
             if not running:
                 break
