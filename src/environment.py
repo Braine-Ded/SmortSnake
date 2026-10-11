@@ -25,9 +25,9 @@ class SnakeEnv:
 
     def __init__(
         self,
-        grid_size: tuple[int, int] = (30, 30),
-        start_size: int = 3,
-        start_pos: tuple[int, int] = (15, 15),
+        grid_size: tuple[int, int],
+        start_size: int,
+        start_pos: tuple[int, int],
         start_horizontal: bool = True,
         seed: int = 67,
         max_steps: int | None = 1000,

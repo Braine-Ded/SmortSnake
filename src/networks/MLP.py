@@ -2,7 +2,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-class BasicNN(nn.Module):
+from base import QNetwork
+
+class MLP(nn.Module, QNetwork):
 
     def __init__(
         self,
