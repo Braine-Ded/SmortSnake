@@ -28,24 +28,10 @@ class ReplayBuffer(Buffer):
     def __len__(self) -> int:
         return len(self.memory)
 
-    def push(
-        self,
-        state: np.ndarray,
-        action: int,
-        reward: float,
-        next_state: np.ndarray,
-        terminated: bool,
-        truncated: bool,
-    ) -> None:
-        """Store one transition, copying observations to prevent mutation."""
-        transition = Transition(
-            state=np.array(state, dtype=np.float32, copy=True),
-            action=int(action),
-            reward=float(reward),
-            next_state=np.array(next_state, dtype=np.float32, copy=True),
-            terminated=bool(terminated),
-            truncated=bool(truncated),
-        )
+    def push(self, transition: Transition) -> None:
+        """Store one transition. Observations are not copied, so callers
+        must not mutate them afterwards (SnakeEnv returns a fresh array
+        on every call, so this is safe with the current environment)."""
         self.memory.append(transition)
 
     def sample(self, batch_size: int) -> TransitionBatch:
