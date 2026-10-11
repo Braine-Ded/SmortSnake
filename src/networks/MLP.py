@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from base import QNetwork
+from .base import QNetwork
 
 class MLP(nn.Module, QNetwork):
 
@@ -23,6 +23,6 @@ class MLP(nn.Module, QNetwork):
         x = F.relu(self.input_layer(x))
         x = F.relu(self.hidden_layer(x))
 
-        # No normalization using Sigmoid or Softmaz used here
-        # Since its better for the model to recieve actual Q values
+        # No normalization using Sigmoid or Softmax used here
+        # Since its better for the model to receive actual Q values
         return self.output_layer(x)

@@ -1,13 +1,13 @@
-from replay_buffer import ReplayBuffer
+import torch
 
-import pytorch
+from ..buffers.ReplayBuffer import ReplayBuffer
 
 class DQNAgent:
 
     def __init__(
         self,
-        model: pytorch.nn.Module,
-        optimizer: pytorch.optim.Optimizer,
+        model: torch.nn.Module,
+        optimizer: torch.optim.Optimizer,
         replay_buf: ReplayBuffer,
         epsilon: float,
         epsilon_min: float,

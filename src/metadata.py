@@ -1,6 +1,9 @@
 from enum import Enum, auto
 from dataclasses import dataclass
 
+import numpy as np
+
+
 class Collision(Enum):
     WALL = auto()
     BODY = auto()
@@ -9,7 +12,7 @@ class Collision(Enum):
 @dataclass(frozen=True)
 class Transition:
     state: np.ndarray
-    action: list
+    action: int
     reward: float
     next_state: np.ndarray
     terminated: bool
@@ -21,6 +24,5 @@ class TransitionBatch:
     actions: np.ndarray
     rewards: np.ndarray
     next_states: np.ndarray
-    terminated: bool
-    truncated: bool
-
+    terminated: np.ndarray
+    truncated: np.ndarray

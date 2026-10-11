@@ -83,8 +83,13 @@ def draw_game(
     env,
     fonts: tuple[pygame.font.Font, pygame.font.Font],
     game_over: bool,
+    interactive: bool = True,
 ) -> None:
-    """Draw the current environment state."""
+    """Draw the current environment state.
+
+    `interactive` selects the HUD/overlay hints: manual play shows the
+    movement and restart keys, policy evaluation only shows how to quit.
+    """
     title_font, body_font = fonts
 
     board_width = env.grid_width * CELL_SIZE
@@ -96,8 +101,13 @@ def draw_game(
     score_surface = title_font.render(
         f"Score: {env.score}", True, TEXT_COLOR
     )
+    controls_text = (
+        "Arrows/WASD: move   R: restart   Esc/Q: quit"
+        if interactive
+        else "Esc/Q: quit"
+    )
     controls_surface = body_font.render(
-        "Arrows/WASD: move   R: restart   Esc: quit",
+        controls_text,
         True,
         MUTED_COLOR,
     )
@@ -160,8 +170,13 @@ def draw_game(
         screen.blit(overlay, (0, HUD_HEIGHT))
 
         message = title_font.render("GAME OVER", True, TEXT_COLOR)
+        restart_text = (
+            "Press R to restart or Esc/Q to quit"
+            if interactive
+            else "Episode finished"
+        )
         restart = body_font.render(
-            "Press R to restart or Esc to quit",
+            restart_text,
             True,
             TEXT_COLOR,
         )
@@ -233,7 +248,11 @@ def run_manual(env) -> None:
                             target,
                         )
 
-                        if action is not None:
+                        # Pressing the current heading again (action 0) must
+                        # not cancel a turn that is already queued.
+                        if action is not None and not (
+                            action == 0 and pending_action is not None
+                        ):
                             pending_action = action
 
             # The clock controls how often the game advances, independently of the window's rendering FPS.
@@ -380,6 +399,7 @@ def run_simulated(
                     env,
                     fonts,
                     game_over=bool(terminated or truncated),
+                    interactive=False,
                 )
 
             end_reason = info.get(
@@ -436,4 +456,3 @@ def run_simulated(
             writer.writerows(results)
 
     return results
-
