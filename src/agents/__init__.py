@@ -1,4 +1,4 @@
 from .base import Agent
-from .DQNAgent import DQNAgent
+from .dqn_agent import DQNAgent
 
 __all__ = ["Agent", "DQNAgent"]

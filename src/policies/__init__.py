@@ -1,5 +1,5 @@
 from .base import Policy
-from .GreedyPolicy import GreedyPolicy
-from .EpsilonGreedyPolicy import EpsilonGreedyPolicy
+from .greedy_policy import GreedyPolicy
+from .epsilon_greedy_policy import EpsilonGreedyPolicy
 
 __all__ = ["Policy", "GreedyPolicy", "EpsilonGreedyPolicy"]

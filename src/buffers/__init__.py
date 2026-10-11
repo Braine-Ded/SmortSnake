@@ -1,4 +1,4 @@
 from .base import Buffer
-from .ReplayBuffer import ReplayBuffer
+from .replay_buffer import ReplayBuffer
 
 __all__ = ["Buffer", "ReplayBuffer"]

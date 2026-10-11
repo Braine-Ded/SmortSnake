@@ -1,11 +1,10 @@
 import torch
 
 import config
-from src.environment import SnakeEnv
-from src.metadata import Transition
-from src.networks.MLP import MLP
-from src.policies.GreedyPolicy import GreedyPolicy
-from src.buffers.ReplayBuffer import ReplayBuffer
+from src import SnakeEnv, Transition
+from src.buffers import ReplayBuffer
+from src.networks import MLP
+from src.policies import GreedyPolicy
 
 
 def main():
