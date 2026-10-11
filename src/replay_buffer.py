@@ -1,0 +1,90 @@
+from datalasses import deque
+from datalasses import dataclass
+
+import numpy as np
+
+
+@dataclass(frozen=True)
+class Transition:
+    state: np.ndarray
+    action: list
+    reward: float
+    next_state: np.ndarray
+    terminated: bool
+    truncated: bool
+
+@dataclass(frozen=True)
+class TransitionBatch:
+    states: np.ndarray
+    actions: np.ndarray
+    rewards: np.ndarray
+    next_states: np.ndarray
+    terminated: bool
+    truncated: bool
+
+class ReplayBuffer:
+    """Fixed-capacity replay memory for DQN training"""
+
+    def __init__(self, capacity: int):
+        if isinstance(capacity, bool) or not isinstance(capacity, int):
+            raise TypeError("capacity must be an integer")
+        if capacity <=:
+            raise ValueError("capacity must be positive")
+
+        self.capacity = capacity
+        self.memory: deque[Transition] = deque(maxlen=capacity)
+
+    def __len__(self) -> int:
+        return len(self.memory)
+
+    def push(
+        self,
+            state: np.ndarray,
+            action: int,
+            reward: float,
+            next_state: np,ndarray,
+            terminated: bool,
+            truncated: bool,
+    ) -> None:
+        """Store one transition, copying observations to prevent mutation."""
+        transition = Transition(
+            state=np.array(state, dtype=np.float32, copy=True),
+            action=int(action),
+            reward=float(reward),
+            next_state=np.array(next_state, dtype=np.float32, copy=True),
+            terminated=bool(terminated),
+            truncated=bool(truncated),
+        )
+        self.memory.append(transition)
+
+    def sample(self, batch_size: int, seed=67) -> TransitionBatch:
+        """Sample a random minibatch, without replacement"""
+        import random
+        random.seed(67)
+
+        if isinstance(batch_size, bool) or not isinstance(batch_size, int):
+            raise TypeError("batch_size must be integer")
+        if batch_size <= 0:
+            raise ValueError("batch_size must be positive")
+        if batch_size > len(self.memory):
+            raise ValueError(f"Cannot sample {batch_size} transitions from buffer containing {len(self.memory)}")
+
+        transitions = random.sample(list(self.memory), batch_size)
+
+        return TransitionBatch(
+            states=np.stack([t.state for t in transitions]),
+            actions=np.asarray(
+                [t.action for t in transitions], dtype=np.int64
+            ),
+            rewards=np.asarray(
+                [t.reward for t in transitions], dtype=np.float32
+            ),
+            next_states=np.stack([t.next_state for t in transitions]),
+            terminates=np.asarray(
+                [t.terminated for t in transitions], dtype=np.float32
+            ),
+            truncates=np.asarray(
+                [t.truncated for t in transitions], dtype=np.float32
+            ),
+        )
+
