@@ -27,7 +27,7 @@ HUD_HEIGHT = 56
 FPS = 60                # manual play
 SIM_FPS = 120           # policy evaluation window
 MOVE_INTERVAL_MS = 120
-END_PAUSE_MS = 150      # pause on the game-over overlay between evaluation episodes
+END_PAUSE_MS = 75      # pause on the game-over overlay between evaluation episodes
 
 BACKGROUND = (17, 24, 32)
 BOARD_COLOR = (23, 33, 43)

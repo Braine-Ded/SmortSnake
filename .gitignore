@@ -24,9 +24,14 @@ Thumbs.db
 # Local secrets / config
 .env
 
-# Training artifacts (model weights, logs, run outputs)
+# Per-run hyperparameters: copy config.example.py -> config.py and tweak freely
+config.py
+
+# Training artifacts (model weights, logs, run outputs, generated plots).
+# Force-add the odd final result when worth keeping: git add -f <file>
 *.pt
 *.pth
 checkpoints/
 runs/
 logs/
+analysis/plots/

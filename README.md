@@ -24,11 +24,27 @@ run_simulated(env, policy.select_action, episodes=5)
 
 Requires `numpy`, `pygame` and `torch`. Run everything from the project root.
 
+## Setup
+
+`config.py` is git-ignored so per-run hyperparameters don't clutter history.
+On a fresh clone, create it from the template:
+
+```
+cp config.example.py config.py
+```
+
+Training writes `checkpoints/` and `logs/`, which are also git-ignored.
+Training can be stopped with Ctrl+C and continued later:
+
+```
+python train.py --resume --log <same-log-name>
+```
+
 ## Project layout
 
 | File | Responsibility | Status |
 | --- | --- | --- |
-| `config.py` | Board size and training hyperparameters (learning rate, gamma, epsilon schedule, batch size, replay capacity, target update frequency, max episodes) | Done |
+| `config.example.py` | Template for `config.py` (git-ignored): board size and training hyperparameters (learning rate, gamma, epsilon schedule, batch size, replay capacity, target update frequency, max episodes) | Done |
 | `play.py` | Entry point for manual play | Done |
 | `train.py` | Run training episodes, update the agent, record metrics | Empty |
 | `test.py` | Evaluate a trained agent | Empty |
