@@ -2,12 +2,18 @@
 
 Examples (run from the project root):
 
-    python eval.py                                    # best.pt, 10 episodes, normal speed
+    python eval.py                                    # asks for a model (blank = best.pt), 10 episodes
+    python eval.py --checkpoint my_model              # checkpoints/my_model.pt, no prompt
     python eval.py --episodes 25 --speed 3            # more episodes, 3x playback speed
     python eval.py --speed 0.5                        # slow motion
     python eval.py --headless --episodes 500          # no window: as fast as possible
     python eval.py --checkpoint checkpoints/best.pt checkpoints/final.pt
     python eval.py --no-log                           # no CSV (and no file-name prompt)
+
+Without --checkpoint you are asked for a model name (blank = best.pt). Names are
+looked up under ./checkpoints (".pt" is added if missing), or used as a path if
+the file exists as given. A missing model is an error; there is no silent
+substitution, so results are never logged under the wrong model.
 
 You are asked for a log file name (blank = eval.csv, paths are relative to ./logs).
 The agent plays greedily (no exploration). Every run appends one row per
@@ -31,14 +37,20 @@ from src.networks import MLP
 from src.policies import GreedyPolicy
 
 ROOT = Path(__file__).resolve().parent
-DEFAULT_CHECKPOINT = ROOT / "checkpoints" / "best.pt"
+CHECKPOINT_DIR = ROOT / "checkpoints"
+DEFAULT_CHECKPOINT_NAME = "best.pt"
+
+# Evaluation uses a different food sequence than training: config.SEED + offset.
+# (With the default SEED = 67 this gives the old fixed eval seed of 123.)
+EVAL_SEED_OFFSET = 56
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Evaluate a trained RLSnake agent.")
     parser.add_argument(
-        "--checkpoint", nargs="+", type=Path, default=[DEFAULT_CHECKPOINT],
-        help="one or more weight files; each is evaluated in turn",
+        "--checkpoint", nargs="+", default=None, metavar="MODEL",
+        help="one or more models (name under ./checkpoints, or a path); each is "
+             f"evaluated in turn. Omit to be asked (blank = {DEFAULT_CHECKPOINT_NAME})",
     )
     parser.add_argument(
         "--episodes", type=int, default=10,
@@ -55,8 +67,9 @@ def parse_args() -> argparse.Namespace:
         help="skip the pygame window and simulate as fast as possible",
     )
     parser.add_argument(
-        "--seed", type=int, default=123,
-        help="environment seed (each checkpoint sees the same food sequence)",
+        "--seed", type=int, default=None,
+        help="environment seed (each checkpoint sees the same food sequence); "
+             f"default: config.SEED + {EVAL_SEED_OFFSET}",
     )
     parser.add_argument("--no-log", action="store_true", help="do not write a CSV")
     args = parser.parse_args()
@@ -65,8 +78,28 @@ def parse_args() -> argparse.Namespace:
         parser.error("--episodes must be at least 1")
     if args.speed <= 0:
         parser.error("--speed must be positive")
+    if args.seed is None:
+        args.seed = config.SEED + EVAL_SEED_OFFSET
 
     return args
+
+
+def resolve_checkpoint(name: str) -> Path:
+    """Find a weight file from a typed name or path, or exit with an error."""
+    given = Path(name).expanduser()
+    candidates = [given]
+
+    # A bare name like "model" or "model.pt" is looked up in ./checkpoints.
+    if not given.is_absolute() and given.parent == Path("."):
+        candidates.append(CHECKPOINT_DIR / (given if given.suffix else given.with_suffix(".pt")))
+
+    for candidate in candidates:
+        if candidate.is_file():
+            return candidate
+
+    searched = ", ".join(str(c) for c in candidates)
+    hint = "\nRun train.py first." if name == DEFAULT_CHECKPOINT_NAME else ""
+    raise SystemExit(f"Checkpoint not found: {name} (looked in: {searched}){hint}")
 
 
 def make_env(seed: int) -> SnakeEnv:
@@ -160,9 +193,12 @@ def summarize(label: str, results: list[dict]) -> None:
 def main() -> None:
     args = parse_args()
 
-    for path in args.checkpoint:
-        if not path.exists():
-            raise SystemExit(f"Checkpoint not found: {path}\nRun train.py first.")
+    names = args.checkpoint
+    if names is None:
+        typed = input(f"Model checkpoint(s) [{DEFAULT_CHECKPOINT_NAME}]: ").split()
+        names = typed or [DEFAULT_CHECKPOINT_NAME]
+
+    checkpoints = [resolve_checkpoint(name) for name in names]
 
     log_path = None if args.no_log else ask_log_path("eval.csv")
 
@@ -172,7 +208,7 @@ def main() -> None:
 
         interval_ms = max(1, round(MOVE_INTERVAL_MS / args.speed))
 
-    for path in args.checkpoint:
+    for path in checkpoints:
         label = path.stem
 
         # A fresh env with the same seed per checkpoint => identical conditions.

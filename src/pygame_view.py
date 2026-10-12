@@ -86,11 +86,16 @@ def draw_game(
     fonts: tuple[pygame.font.Font, pygame.font.Font],
     game_over: bool,
     interactive: bool = True,
+    episode: int | None = None,
+    total_episodes: int | None = None,
 ) -> None:
     """Draw the current environment state.
 
     `interactive` selects the HUD/overlay hints: manual play shows the
     movement and restart keys, policy evaluation only shows how to quit.
+
+    If `episode` is given, a small episode counter ("Episode 3/10") is drawn
+    at the top right of the HUD; it shortens to "Ep 3/10" on narrow boards.
     """
     title_font, body_font = fonts
 
@@ -116,6 +121,20 @@ def draw_game(
 
     screen.blit(score_surface, (14, 7))
     screen.blit(controls_surface, (14, 32))
+
+    if episode is not None:
+        counter = f"{episode}/{total_episodes}" if total_episodes else str(episode)
+        free_width = board_width - 14 - (14 + score_surface.get_width()) - 10
+
+        for prefix in ("Episode ", "Ep "):
+            episode_surface = body_font.render(prefix + counter, True, MUTED_COLOR)
+            if episode_surface.get_width() <= free_width:
+                break
+
+        screen.blit(
+            episode_surface,
+            episode_surface.get_rect(midright=(board_width - 14, 20)),
+        )
 
     # Board
     board = pygame.Rect(0, HUD_HEIGHT, board_width, board_height)
@@ -411,6 +430,8 @@ def run_simulated(
                     fonts,
                     game_over=bool(terminated or truncated),
                     interactive=False,
+                    episode=episode,
+                    total_episodes=episodes,
                 )
 
             end_reason = info.get(

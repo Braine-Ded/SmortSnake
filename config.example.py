@@ -2,6 +2,11 @@
 #
 #     cp config.example.py config.py
 
+# ---------- Reproducibility ----------
+# Global seed: drives the env, replay buffer, exploration policy, network init
+# and python/numpy/torch RNGs in train.py (eval/play/tests derive from it too).
+SEED = 67
+
 # ---------- Environment ----------
 GRID_SIZE = (10, 10)
 

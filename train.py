@@ -1,8 +1,10 @@
 import argparse
 import csv
+import random
 from collections import deque
 from pathlib import Path
 
+import numpy as np
 import torch
 
 import config
@@ -13,7 +15,7 @@ from src.logs import ask_log_path, log_path as resolve_log_path
 from src.networks import MLP
 from src.policies import EpsilonGreedyPolicy, GreedyPolicy
 
-SEED = 67
+SEED = config.SEED
 CHECKPOINT_DIR = Path("checkpoints")
 STATE_PATH = CHECKPOINT_DIR / "state.pt"   # full training state, used by --resume
 LOG_EVERY = 10      # print a progress line every N episodes
@@ -70,6 +72,10 @@ def main():
     else:
         log_path = ask_log_path("training.csv")
 
+    # Seed every global RNG (network init, anything using random/np.random).
+    # The env, buffer and policy additionally get their own private seeded RNGs below.
+    random.seed(SEED)
+    np.random.seed(SEED)
     torch.manual_seed(SEED)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 

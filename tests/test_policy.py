@@ -16,6 +16,7 @@ def main():
         config.GRID_SIZE,
         3,
         tuple(size // 2 for size in config.GRID_SIZE),
+        seed=config.SEED,
     )
 
     # 1. Create the online network.
@@ -40,7 +41,7 @@ def main():
     )
     buffer = ReplayBuffer(
         capacity=config.REPLAY_CAPACITY,
-        seed=67,
+        seed=config.SEED,
     )
 
     # 4. Inject the online model into the greedy policy.
