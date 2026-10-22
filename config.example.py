@@ -1,4 +1,6 @@
 # Default configuration. Copy to config.py (git-ignored) and edit per run:
+# .
+#
 #
 #     cp config.example.py config.py
 
