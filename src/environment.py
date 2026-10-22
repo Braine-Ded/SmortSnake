@@ -6,6 +6,7 @@ from numbers import Integral
 import numpy as np
 
 from .metadata import Collision
+from .observations import FeatureObservation, ObservationEncoder, ObservationSpec
 
 
 class SnakeEnv:
@@ -13,9 +14,6 @@ class SnakeEnv:
     ACTION_RIGHT = 1
     ACTION_LEFT = 2
     NUM_ACTIONS = 3
-
-    # Observation: 3 danger + 4 direction + 4 food-position features.
-    OBSERVATION_SIZE = 11
 
     # Initial reward configuration.
     STEP_REWARD = -0.01
@@ -31,6 +29,7 @@ class SnakeEnv:
         start_horizontal: bool = True,
         seed: int = 67,
         max_steps: int | None = 1000,
+        observation: ObservationEncoder | None = None,
     ):
         width, height = grid_size
 
@@ -81,7 +80,19 @@ class SnakeEnv:
         self.seed = seed
         self._random = random.Random(seed)
 
+        # What the agent sees. Defaults to the original 11 features.
+        self.observation = (
+            FeatureObservation() if observation is None else observation
+        )
+
+        # Catch an encoder built for a different grid size up front.
+        self.observation.check_compatible(self)
+
         self.reset()
+
+    @property
+    def observation_spec(self) -> ObservationSpec:
+        return self.observation.spec
 
     @property
     def grid_width(self) -> int:
@@ -121,7 +132,7 @@ class SnakeEnv:
         return self._random.choice(empty_cells)
 
     @staticmethod
-    def _dir_after_action(
+    def dir_after_action(
         current: tuple[int, int],
         action: int,
     ) -> tuple[int, int]:
@@ -140,7 +151,7 @@ class SnakeEnv:
 
         raise ValueError(f"Invalid action: {action}")
 
-    def _is_danger(self, direction: tuple[int, int]) -> bool:
+    def is_danger(self, direction: tuple[int, int]) -> bool:
         """Would moving in this direction hit a wall or body segment?"""
         head_x, head_y = self.snake[0]
         dx, dy = direction
@@ -156,40 +167,8 @@ class SnakeEnv:
         return next_head in self.snake[:-1]
 
     def _get_obs(self) -> np.ndarray:
-        """Return an 11-feature float32 observation."""
-        head_x, head_y = self.snake[0]
-
-        straight = self.direction
-        right = self._dir_after_action(
-            self.direction, self.ACTION_RIGHT
-        )
-        left = self._dir_after_action(
-            self.direction, self.ACTION_LEFT
-        )
-
-        food_left = self.food is not None and self.food[0] < head_x
-        food_right = self.food is not None and self.food[0] > head_x
-        food_up = self.food is not None and self.food[1] < head_y
-        food_down = self.food is not None and self.food[1] > head_y
-
-        return np.asarray(
-            [
-                self._is_danger(straight),
-                self._is_danger(right),
-                self._is_danger(left),
-
-                self.direction == (-1, 0),
-                self.direction == (1, 0),
-                self.direction == (0, -1),
-                self.direction == (0, 1),
-
-                food_left,
-                food_right,
-                food_up,
-                food_down,
-            ],
-            dtype=np.float32,
-        )
+        """Return the observation produced by the configured encoder."""
+        return self.observation.encode(self)
 
     def _check_collision(
         self,
@@ -271,7 +250,7 @@ class SnakeEnv:
         action = int(action)
 
         # Calculate the candidate move before mutating the environment.
-        new_direction = self._dir_after_action(self.direction, action)
+        new_direction = self.dir_after_action(self.direction, action)
 
         head_x, head_y = self.snake[0]
         dx, dy = new_direction

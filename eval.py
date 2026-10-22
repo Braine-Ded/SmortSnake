@@ -116,7 +116,7 @@ def load_policy(path: Path, env: SnakeEnv) -> GreedyPolicy:
     device = torch.device("cpu")
 
     model = MLP(
-        input_size=env.OBSERVATION_SIZE,
+        input_size=env.observation_spec.size,
         output_size=env.NUM_ACTIONS,
     ).to(device)
     model.load_state_dict(torch.load(path, map_location=device))

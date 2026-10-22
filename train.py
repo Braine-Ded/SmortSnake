@@ -104,7 +104,7 @@ def main():
     )
 
     model = MLP(
-        input_size=env.OBSERVATION_SIZE,
+        input_size=env.observation_spec.size,
         output_size=env.NUM_ACTIONS,
     ).to(device)
 

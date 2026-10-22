@@ -21,13 +21,13 @@ def main():
 
     # 1. Create the online network.
     model = MLP(
-        input_size=env.OBSERVATION_SIZE,
+        input_size=env.observation_spec.size,
         output_size=env.NUM_ACTIONS,
     ).to(device)
 
     # 2. Create a matching, initially identical target network.
     target_model = MLP(
-        input_size=env.OBSERVATION_SIZE,
+        input_size=env.observation_spec.size,
         output_size=env.NUM_ACTIONS,
     ).to(device)
     target_model.load_state_dict(model.state_dict())
