@@ -86,3 +86,36 @@ class DQNAgent(Agent):
             self.target_model.load_state_dict(self.model.state_dict())
 
         return loss.item()
+
+    def end_episode(self):
+        self.policy.end_episode()
+
+    def metrics(self):
+        return self.policy.metrics()
+
+    # ---------- checkpointing ----------
+
+    def weights(self):
+        return self.model.state_dict()
+
+    def load_weights(self, weights):
+        self.model.load_state_dict(weights)
+        self.target_model.load_state_dict(weights)
+
+    def state_dict(self):
+        return {
+            "model": self.model.state_dict(),
+            "target_model": self.target_model.state_dict(),
+            "optimizer": self.optimizer.state_dict(),
+            "update_count": self._update_count,
+            "policy": self.policy.state_dict(),
+            "buffer": self.buffer.state_dict(),
+        }
+
+    def load_state_dict(self, state):
+        self.model.load_state_dict(state["model"])
+        self.target_model.load_state_dict(state["target_model"])
+        self.optimizer.load_state_dict(state["optimizer"])
+        self._update_count = state["update_count"]
+        self.policy.load_state_dict(state["policy"])
+        self.buffer.load_state_dict(state["buffer"])

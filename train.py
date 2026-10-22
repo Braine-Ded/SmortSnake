@@ -7,29 +7,25 @@ from pathlib import Path
 import numpy as np
 import torch
 
-import config
-from src import SnakeEnv, Transition
-from src.agents import DQNAgent
-from src.buffers import ReplayBuffer
+from src import Transition
+from src.config_loader import load_config
 from src.logs import ask_log_path, log_path as resolve_log_path
-from src.networks import MLP
-from src.policies import EpsilonGreedyPolicy, GreedyPolicy
+
+# The whole setup (env, observation, network, optimizer, loss, buffer, policy,
+# agent) comes from the config selected in config.py; nothing is built here.
+config = load_config()
 
 SEED = config.SEED
-CHECKPOINT_DIR = Path("checkpoints")
+# One folder per config, so training one setup never overwrites another's weights.
+CHECKPOINT_DIR = Path("checkpoints") / config.NAME
 STATE_PATH = CHECKPOINT_DIR / "state.pt"   # full training state, used by --resume
 LOG_EVERY = 10      # print a progress line every N episodes
 SAVE_EVERY = 50     # write the resumable state every N episodes
 WINDOW = 100        # moving-average window used for "best model" tracking
 
-LOG_FIELDS = [
-    "episode", "score", "total_reward", "steps",
-    "epsilon", "mean_loss", "avg_score",
-]
-
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Train the Snake DQN agent.")
+    parser = argparse.ArgumentParser(description="Train the Snake agent.")
     parser.add_argument(
         "--resume", nargs="?", const=str(STATE_PATH), default=None, metavar="PATH",
         help=f"resume from a training-state checkpoint (default: {STATE_PATH})",
@@ -42,22 +38,17 @@ def parse_args():
     return parser.parse_args()
 
 
-def save_state(path, *, episode, model, agent, optimizer, policy, buffer,
-               recent_scores, best_avg_score):
+def save_state(path, *, episode, agent, recent_scores, best_avg_score):
     """Atomically write everything needed to continue training later."""
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(".tmp")
     torch.save(
         {
+            "config": config.NAME,
             "episode": episode,                      # last *completed* episode
-            "model": model.state_dict(),
-            "target_model": agent.target_model.state_dict(),
-            "optimizer": optimizer.state_dict(),
-            "update_count": agent._update_count,
-            "epsilon": policy.epsilon,
+            "agent": agent.state_dict(),
             "recent_scores": list(recent_scores),
             "best_avg_score": best_avg_score,
-            "buffer": buffer.state_dict(),
         },
         tmp,
     )
@@ -70,10 +61,10 @@ def main():
     if args.log:
         log_path = resolve_log_path(args.log)
     else:
-        log_path = ask_log_path("training.csv")
+        log_path = ask_log_path(f"training_{config.NAME}.csv")
 
     # Seed every global RNG (network init, anything using random/np.random).
-    # The env, buffer and policy additionally get their own private seeded RNGs below.
+    # The env, buffer and policy additionally get their own private seeded RNGs.
     random.seed(SEED)
     np.random.seed(SEED)
     torch.manual_seed(SEED)
@@ -87,77 +78,52 @@ def main():
         if not resume_path.exists():
             raise SystemExit(f"Cannot resume: {resume_path} does not exist.")
         state = torch.load(resume_path, map_location=device, weights_only=False)
+        if "agent" not in state:
+            raise SystemExit(f"Cannot resume: {resume_path} predates config-based setups.")
+        if state["config"] != config.NAME:
+            raise SystemExit(
+                f"Cannot resume: {resume_path} was trained with config "
+                f"'{state['config']}', but config.py selects '{config.NAME}'."
+            )
         start_episode = state["episode"] + 1
-        print(f"Resuming from {resume_path} (completed episode {state['episode']}, "
-              f"epsilon {state['epsilon']:.4f})")
+        print(f"Resuming {config.NAME} from {resume_path} "
+              f"(completed episode {state['episode']})")
 
     # Different seed per resume so the env/policy don't replay the same
     # random sequence as the start of the first run.
     run_seed = SEED + (start_episode - 1)
 
     # ---------- Build the pieces ----------
-    env = SnakeEnv(
-        config.GRID_SIZE,
-        3,
-        tuple(size // 2 for size in config.GRID_SIZE),
-        seed=run_seed,
-    )
-
-    model = MLP(
-        input_size=env.observation_spec.size,
-        output_size=env.NUM_ACTIONS,
-    ).to(device)
-
-    optimizer = torch.optim.Adam(model.parameters(), lr=config.LEARNING_RATE)
-    loss_fn = torch.nn.SmoothL1Loss()
-    buffer = ReplayBuffer(capacity=config.REPLAY_CAPACITY, seed=run_seed)
-
-    # The epsilon-greedy policy wraps a greedy one that reads the *online* model.
-    policy = EpsilonGreedyPolicy(
-        GreedyPolicy(model, device=device),
-        num_actions=env.NUM_ACTIONS,
-        epsilon_start=config.EPSILON_START,
-        epsilon_min=config.EPSILON_MIN,
-        epsilon_decay=config.EPSILON_DECAY,
-        seed=run_seed,
-    )
-
-    agent = DQNAgent(
-        model=model,
-        optimizer=optimizer,
-        loss_fn=loss_fn,
-        buffer=buffer,
-        policy=policy,
-        gamma=config.GAMMA,
-        batch_size=config.BATCH_SIZE,
-        target_update_freq=config.TARGET_UPDATE_FREQ,
-        device=device,
-    )
+    env = config.make_env(run_seed)
+    agent = config.make_agent(env, device, run_seed)
 
     recent_scores = deque(maxlen=WINDOW)
     best_avg_score = float("-inf")
 
     # ---------- Restore state ----------
     if state is not None:
-        model.load_state_dict(state["model"])
-        agent.target_model.load_state_dict(state["target_model"])
-        optimizer.load_state_dict(state["optimizer"])
-        agent._update_count = state["update_count"]
-        policy.epsilon = state["epsilon"]
+        agent.load_state_dict(state["agent"])
         recent_scores.extend(state["recent_scores"])
         best_avg_score = state["best_avg_score"]
-        buffer.load_state_dict(state["buffer"])
         del state
 
-    CHECKPOINT_DIR.mkdir(exist_ok=True)
+    CHECKPOINT_DIR.mkdir(parents=True, exist_ok=True)
     log_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # Agent-specific columns (e.g. epsilon) sit where epsilon always did.
+    log_fields = [
+        "episode", "score", "total_reward", "steps",
+        *agent.metrics(), "mean_loss", "avg_score",
+    ]
 
     # Append to the existing log when resuming; otherwise start a fresh one.
     append = args.resume is not None and log_path.exists() and log_path.stat().st_size > 0
     completed = start_episode - 1  # last fully finished episode
 
+    print(f"Training config: {config.NAME}")
+
     with log_path.open("a" if append else "w", newline="", encoding="utf-8") as log_file:
-        writer = csv.DictWriter(log_file, fieldnames=LOG_FIELDS)
+        writer = csv.DictWriter(log_file, fieldnames=log_fields)
         if not append:
             writer.writeheader()
 
@@ -193,8 +159,9 @@ def main():
                     steps += 1
                     done = terminated or truncated
 
-                # Epsilon decays once per episode.
-                policy.decay()
+                # Per-episode bookkeeping, e.g. epsilon decay.
+                agent.end_episode()
+                metrics = agent.metrics()
 
                 score = info["score"]
                 recent_scores.append(score)
@@ -206,7 +173,7 @@ def main():
                     "score": score,
                     "total_reward": round(total_reward, 4),
                     "steps": steps,
-                    "epsilon": round(policy.epsilon, 5),
+                    **{name: round(value, 5) for name, value in metrics.items()},
                     "mean_loss": mean_loss,
                     "avg_score": round(avg_score, 4),
                 })
@@ -216,20 +183,22 @@ def main():
                 # Keep the best model, judged on a full moving-average window.
                 if len(recent_scores) == WINDOW and avg_score > best_avg_score:
                     best_avg_score = avg_score
-                    torch.save(model.state_dict(), CHECKPOINT_DIR / "best.pt")
+                    torch.save(agent.weights(), CHECKPOINT_DIR / "best.pt")
 
                 if episode % SAVE_EVERY == 0:
                     save_state(
-                        STATE_PATH, episode=completed, model=model, agent=agent,
-                        optimizer=optimizer, policy=policy, buffer=buffer,
+                        STATE_PATH, episode=completed, agent=agent,
                         recent_scores=recent_scores, best_avg_score=best_avg_score,
                     )
 
                 if episode % LOG_EVERY == 0:
                     loss_text = "n/a" if mean_loss is None else f"{mean_loss:.4f}"
+                    metrics_text = "".join(
+                        f" | {name} {value:.3f}" for name, value in metrics.items()
+                    )
                     print(
                         f"ep {episode:4d} | score {score:3d} | "
-                        f"avg{WINDOW} {avg_score:6.2f} | eps {policy.epsilon:.3f} | "
+                        f"avg{WINDOW} {avg_score:6.2f}{metrics_text} | "
                         f"steps {steps:4d} | loss {loss_text}"
                     )
 
@@ -237,10 +206,9 @@ def main():
             print("\nTraining interrupted; saving the current state.")
 
         finally:
-            torch.save(model.state_dict(), CHECKPOINT_DIR / "final.pt")
+            torch.save(agent.weights(), CHECKPOINT_DIR / "final.pt")
             save_state(
-                STATE_PATH, episode=completed, model=model, agent=agent,
-                optimizer=optimizer, policy=policy, buffer=buffer,
+                STATE_PATH, episode=completed, agent=agent,
                 recent_scores=recent_scores, best_avg_score=best_avg_score,
             )
 

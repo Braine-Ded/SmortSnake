@@ -17,3 +17,11 @@ class Buffer(ABC):
     @abstractmethod
     def __len__(self) -> int:
         """Return the number of stored transitions."""
+
+    @abstractmethod
+    def state_dict(self) -> dict:
+        """Contents and RNG state, for checkpointing."""
+
+    @abstractmethod
+    def load_state_dict(self, state: dict) -> None:
+        """Restore the output of `state_dict()`."""

@@ -1,10 +1,9 @@
 import torch
 
-import config
-from src import SnakeEnv, Transition
-from src.buffers import ReplayBuffer
-from src.networks import MLP
-from src.policies import GreedyPolicy
+from src import Transition
+from src.config_loader import load_config
+
+config = load_config()
 
 
 def main():
@@ -12,67 +11,39 @@ def main():
         "cuda" if torch.cuda.is_available() else "cpu"
     )
 
-    env = SnakeEnv(
-        config.GRID_SIZE,
-        3,
-        tuple(size // 2 for size in config.GRID_SIZE),
-        seed=config.SEED,
-    )
+    # 1. Build the selected setup exactly as train.py does.
+    env = config.make_env(config.SEED)
+    agent = config.make_agent(env, device, config.SEED)
+    print("Config:", config.NAME)
 
-    # 1. Create the online network.
-    model = MLP(
-        input_size=env.observation_spec.size,
-        output_size=env.NUM_ACTIONS,
-    ).to(device)
-
-    # 2. Create a matching, initially identical target network.
-    target_model = MLP(
-        input_size=env.observation_spec.size,
-        output_size=env.NUM_ACTIONS,
-    ).to(device)
-    target_model.load_state_dict(model.state_dict())
-    target_model.eval()
-    target_model.requires_grad_(False)
-
-    # 3. Set up the optimizer and replay buffer.
-    optimizer = torch.optim.Adam(
-        model.parameters(),
-        lr=config.LEARNING_RATE,
-    )
-    buffer = ReplayBuffer(
-        capacity=config.REPLAY_CAPACITY,
-        seed=config.SEED,
-    )
-
-    # 4. Inject the online model into the greedy policy.
-    policy = GreedyPolicy(model, device=device)
-
-    # 5. Verify a single decision.
+    # 2. Verify a single greedy decision.
     state, info = env.reset(seed=123)
-    action = policy.select_action(state)
+    action = agent.act(state, explore=False)
 
     assert isinstance(action, int)
     assert action in range(env.NUM_ACTIONS)
     print("State shape:", state.shape)
     print("Selected action:", action)
 
-    # 6. Verify the environment-policy interaction.
+    # 3. Verify the environment-agent interaction.
     next_state, reward, terminated, truncated, info = env.step(action)
-
-    buffer.push(
+    agent.observe(
         Transition(state, action, reward, next_state, terminated, truncated)
     )
-
-    assert len(buffer) == 1
-    print("Buffer length:", len(buffer))
     print("Reward:", reward)
     print("Terminated / truncated:", terminated, truncated)
 
-    # 7. Verify target and online parameters begin identical.
-    for online, target in zip(model.parameters(), target_model.parameters()):
-        assert torch.equal(online, target)
+    # 4. Fresh weights round-trip: a second agent loaded from them acts the same.
+    clone = config.make_agent(env, device, config.SEED)
+    clone.load_weights(agent.weights())
+    assert clone.act(state, explore=False) == action
 
-    print("Online network, target network, policy and buffer smoke test passed.")
+    # 5. Full training state round-trips (networks, optimizer, buffer, policy).
+    clone.load_state_dict(agent.state_dict())
+    for online, restored in zip(agent.weights().values(), clone.weights().values()):
+        assert torch.equal(online, restored)
+
+    print("Setup, agent, weights and training-state smoke test passed.")
 
 
 if __name__ == "__main__":

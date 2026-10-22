@@ -3,16 +3,19 @@
 Examples (run from the project root):
 
     python eval.py                                    # asks for a model (blank = best.pt), 10 episodes
-    python eval.py --checkpoint my_model              # checkpoints/my_model.pt, no prompt
+    python eval.py --checkpoint my_model              # checkpoints/<config>/my_model.pt, no prompt
     python eval.py --episodes 25 --speed 3            # more episodes, 3x playback speed
     python eval.py --speed 0.5                        # slow motion
     python eval.py --headless --episodes 500          # no window: as fast as possible
-    python eval.py --checkpoint checkpoints/best.pt checkpoints/final.pt
+    python eval.py --checkpoint best final            # both from checkpoints/<config>/
     python eval.py --no-log                           # no CSV (and no file-name prompt)
 
+The env and agent come from the config selected in config.py, so evaluate a
+checkpoint under the config that trained it.
+
 Without --checkpoint you are asked for a model name (blank = best.pt). Names are
-looked up under ./checkpoints (".pt" is added if missing), or used as a path if
-the file exists as given. A missing model is an error; there is no silent
+looked up under ./checkpoints/<config NAME> (".pt" is added if missing), or used
+as a path if the file exists as given. A missing model is an error; there is no silent
 substitution, so results are never logged under the wrong model.
 
 You are asked for a log file name (blank = eval.csv, paths are relative to ./logs).
@@ -30,14 +33,16 @@ from pathlib import Path
 
 import torch
 
-import config
-from src import SnakeEnv
+from src.agents import Agent
+from src.config_loader import load_config
 from src.logs import ask_log_path
-from src.networks import MLP
-from src.policies import GreedyPolicy
+
+# The env and agent are built by the config selected in config.py, so a
+# checkpoint must be evaluated under the config it was trained with.
+config = load_config()
 
 ROOT = Path(__file__).resolve().parent
-CHECKPOINT_DIR = ROOT / "checkpoints"
+CHECKPOINT_DIR = ROOT / "checkpoints" / config.NAME
 DEFAULT_CHECKPOINT_NAME = "best.pt"
 
 # Evaluation uses a different food sequence than training: config.SEED + offset.
@@ -49,7 +54,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Evaluate a trained RLSnake agent.")
     parser.add_argument(
         "--checkpoint", nargs="+", default=None, metavar="MODEL",
-        help="one or more models (name under ./checkpoints, or a path); each is "
+        help="one or more models (name under ./checkpoints/<config>, or a path); each is "
              f"evaluated in turn. Omit to be asked (blank = {DEFAULT_CHECKPOINT_NAME})",
     )
     parser.add_argument(
@@ -89,7 +94,7 @@ def resolve_checkpoint(name: str) -> Path:
     given = Path(name).expanduser()
     candidates = [given]
 
-    # A bare name like "model" or "model.pt" is looked up in ./checkpoints.
+    # A bare name like "model" or "model.pt" is looked up in ./checkpoints/<config>.
     if not given.is_absolute() and given.parent == Path("."):
         candidates.append(CHECKPOINT_DIR / (given if given.suffix else given.with_suffix(".pt")))
 
@@ -102,27 +107,20 @@ def resolve_checkpoint(name: str) -> Path:
     raise SystemExit(f"Checkpoint not found: {name} (looked in: {searched}){hint}")
 
 
-def make_env(seed: int) -> SnakeEnv:
-    return SnakeEnv(
-        config.GRID_SIZE,
-        3,
-        tuple(size // 2 for size in config.GRID_SIZE),
-        seed=seed,
-    )
-
-
-def load_policy(path: Path, env: SnakeEnv) -> GreedyPolicy:
+def load_agent(path: Path, env, seed: int) -> Agent:
     # One observation at a time is faster on the CPU than on a GPU.
     device = torch.device("cpu")
 
-    model = MLP(
-        input_size=env.observation_spec.size,
-        output_size=env.NUM_ACTIONS,
-    ).to(device)
-    model.load_state_dict(torch.load(path, map_location=device))
-    model.eval()
+    agent = config.make_agent(env, device, seed)
+    try:
+        agent.load_weights(torch.load(path, map_location=device))
+    except RuntimeError as error:
+        raise SystemExit(
+            f"{path} does not fit config '{config.NAME}' (was it trained with "
+            f"another config?)\n{error}"
+        ) from None
 
-    return GreedyPolicy(model, device=device)
+    return agent
 
 
 def run_headless(env, action_fn, *, episodes: int, checkpoint: str) -> list[dict]:
@@ -209,22 +207,25 @@ def main() -> None:
         interval_ms = max(1, round(MOVE_INTERVAL_MS / args.speed))
 
     for path in checkpoints:
-        label = path.stem
+        label = f"{config.NAME}/{path.stem}"
 
         # A fresh env with the same seed per checkpoint => identical conditions.
-        env = make_env(args.seed)
-        policy = load_policy(path, env)
+        env = config.make_env(args.seed)
+        agent = load_agent(path, env, args.seed)
+
+        def act_greedily(observation):
+            return agent.act(observation, explore=False)
 
         if args.headless:
             results = run_headless(
-                env, policy.select_action,
+                env, act_greedily,
                 episodes=args.episodes, checkpoint=label,
             )
             if log_path is not None:
                 append_csv(log_path, results)
         else:
             results = run_simulated(
-                env, policy.select_action,
+                env, act_greedily,
                 episodes=args.episodes,
                 move_interval_ms=interval_ms,
                 csv_path=log_path,

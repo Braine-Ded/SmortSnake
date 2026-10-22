@@ -1,13 +1,7 @@
-from src.environment import SnakeEnv
+from src.config_loader import load_config
 from src.pygame_view import run_manual
 
-import config
-
 if __name__ == "__main__":
-    env = SnakeEnv(
-        config.GRID_SIZE,
-        3,
-        tuple(i // 2 for i in config.GRID_SIZE),
-        seed=config.SEED,
-    )
+    config = load_config()
+    env = config.make_env(config.SEED)
     run_manual(env)
