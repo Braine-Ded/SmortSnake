@@ -2,7 +2,7 @@
 
 Usage (from anywhere):
 
-    python analysis/plot_training.py                       # asks for the log name (blank = training.csv)
+    python analysis/plot_training.py                       # asks for the log name (blank = train.csv)
     python analysis/plot_training.py --window 50
     python analysis/plot_training.py --csv run_a run_b --out analysis/compare
     python analysis/plot_training.py --show
@@ -12,7 +12,8 @@ With one CSV, each smoothed metric shows the raw values (faint) plus a moving
 average. With several CSVs, only the moving averages are drawn, one line per
 run, so the runs can be compared directly.
 
-Outputs: one PNG per metric plus dashboard.png, written to --out.
+Outputs (to --out): for one log, the dashboard as <log name>.png and one PNG per
+metric in <log name>/; in comparison mode, dashboard.png and one PNG per metric.
 Requires: numpy, matplotlib  (pip install matplotlib)
 """
 
@@ -159,14 +160,22 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
 
-    paths = [log_path(n) for n in args.csv] if args.csv else [ask_log_path("training.csv")]
+    paths = [log_path(n) for n in args.csv] if args.csv else [ask_log_path("train.csv")]
 
     for path in paths:
         if not path.exists():
             raise SystemExit(f"CSV not found: {path}")
 
     runs = [load_run(path) for path in paths]
-    args.out.mkdir(parents=True, exist_ok=True)
+
+    # One log: name the dashboard after it, so every run keeps its own plots.
+    if len(paths) == 1:
+        dashboard = args.out / f"{paths[0].stem}.png"
+        panel_dir = args.out / paths[0].stem
+    else:
+        dashboard = args.out / "dashboard.png"
+        panel_dir = args.out
+    panel_dir.mkdir(parents=True, exist_ok=True)
 
     for name, data in runs:
         print_summary(name, data, args.window)
@@ -180,7 +189,7 @@ def main() -> None:
         draw_metric(ax, runs, key, title, ylabel, smooth, args.window)
         fig.tight_layout()
 
-        path = args.out / f"{key}.png"
+        path = panel_dir / f"{key}.png"
         fig.savefig(path, dpi=150)
         print(f"saved {path}")
 
@@ -201,7 +210,6 @@ def main() -> None:
     fig.suptitle(heading, fontsize=14)
     fig.tight_layout()
 
-    dashboard = args.out / "dashboard.png"
     fig.savefig(dashboard, dpi=150)
     print(f"saved {dashboard}")
 

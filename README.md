@@ -21,7 +21,10 @@ git-ignored (use `git add -f <file>` for a result worth keeping).
 ## Configs: one file per setup
 
 Each module in `configs/` is a complete, self-contained setup: hyperparameters
-(including the global `SEED`) plus two functions that build every component:
+(including the global `SEED`), the environment settings `ENV` (grid, episode
+limit and rewards, see [Environment](#environment)), the run-name labels
+`ALGO`, `POLICY`, `NET`, `OBS` and `ARCH`, plus two functions that build every
+component:
 
 - `make_env(seed)`: the env and its observation encoder
 - `make_agent(env, device, seed)`: network, optimizer, loss, replay buffer,
@@ -39,15 +42,39 @@ from configs.dqn_cnn import *
 | --- | --- |
 | `configs/dqn_features.py` | DQN + MLP on the 11 hand-crafted features |
 | `configs/dqn_cnn.py` | DQN + CNN on the full board (`PlaneObservation`) |
+| `configs/dqn_cnn_ego.py` | DQN + CNN on the board rotated so the head faces up (`EgocentricPlaneObservation`), step penalty 0.1 |
 
 To try a new architecture, copy a config, change what it builds (and its `NAME`),
 and import it from `config.py`. Don't override values below the import in
-`config.py`: the build functions read their own module's globals.
+`config.py`: the build functions read their own module's globals. To run a
+config without touching `config.py` (e.g. two trainings side by side), set
+`RLSNAKE_CONFIG=configs.<module>`.
 
 The seed drives the env, replay buffer, exploration policy, network init and the
 python/numpy/torch RNGs. Checkpoints go to `checkpoints/<NAME>/`, so setups never
 overwrite each other, and resuming or evaluating a checkpoint under a different
 config than the one that trained it fails with a clear error.
+
+### Run names
+
+Every run is named from its config (`src/naming.py`), and logs, checkpoints and
+plots all use that name:
+
+```
+{algo}_{policy}_{net}_{obs}_{gamma}_{episodes}_{arch}[_{deviation}...]
+dqn_egp_mlp_feat_9_5k_064032
+dqn_egp_cnn_ego_95_10k_016032064_sp010
+```
+
+- `gamma`: only the digits after the decimal point (0.9 -> `9`, 0.95 -> `95`)
+- `episodes`: in thousands (10000 -> `10k`)
+- `arch`: 3 digits per layer (CNN conv1, conv2, hidden; MLP hidden1, hidden2)
+- deviations: `ENV` fields that differ from the defaults, e.g. `sp010` (step
+  penalty 0.10), `fr20` (food reward), `dr5` (death penalty), `wb50` (win
+  bonus), `ms500` (max steps), `gs8x8` (grid), `ss4` (start size)
+
+Settings outside the name (learning rate, epsilon schedule, ...) are written to
+`logs/train_<run>.json` next to the training log.
 
 ## Usage
 
@@ -57,38 +84,44 @@ config than the one that trained it fails with a clear error.
 python play.py
 ```
 
-**Train** (asks for a log file name under `./logs`, or pass `--log`):
+**Train** (asks for a log file name under `./logs`, blank = `train_<run>.csv`,
+or pass `--log`):
 
 ```
 python train.py
-python train.py --log run1
+python train.py --log train_<run>
 ```
 
-Weights go to `checkpoints/<NAME>/best.pt` (best 100-episode average) and
-`checkpoints/<NAME>/final.pt`. A full training state (`agent.state_dict()`:
+Weights go to `checkpoints/<NAME>/best_<run>.pt` (best 100-episode average) and
+`checkpoints/<NAME>/final_<run>.pt`. A full training state (`agent.state_dict()`:
 networks, optimizer, policy, replay buffer, ...) is saved to
-`checkpoints/<NAME>/state.pt` every 50 episodes and on Ctrl+C, so training can be
-stopped and continued later:
+`checkpoints/<NAME>/state_<run>.pt` every 50 episodes and on Ctrl+C, so training
+can be stopped and continued later:
 
 ```
-python train.py --resume --log run1      # appends to logs/run1.csv
-python train.py --resume path/to/state.pt --log run1
+python train.py --resume --log train_<run>      # appends to logs/train_<run>.csv
+python train.py --resume path/to/state.pt --log train_<run>
 ```
+
+Resuming refuses a state saved with different settings, except `MAX_EPISODES`,
+which may be raised to extend a run (pass the old state's path, since the run
+name changes with the episode count).
 
 **Evaluate** a trained agent (greedy, no exploration), with or without a window:
 
 ```
-python eval.py                                   # checkpoints/<NAME>/best.pt, 10 episodes
-python eval.py --headless --episodes 500
-python eval.py --checkpoint best final
+python eval.py                                   # checkpoints/<NAME>/best_<run>.pt, 10 episodes
+python eval.py --headless --episodes 500 --log eval_<run>
+python eval.py --checkpoint best_<run> final_<run>
 ```
 
-**Plot** training curves and evaluation results to `analysis/plots/`:
+**Plot** training curves and evaluation results to `analysis/plots/` (the
+dashboard is saved as `<log name>.png`, single panels in `<log name>/`):
 
 ```
-python analysis/plot_training.py --csv run1
+python analysis/plot_training.py --csv train_<run>
 python analysis/plot_training.py --csv run_a run_b      # compare runs
-python analysis/plot_eval.py --csv eval
+python analysis/plot_eval.py --csv eval_<run>
 ```
 
 **Watch an agent** from your own code:
@@ -115,7 +148,9 @@ run_simulated(env, lambda obs: agent.act(obs, explore=False), episodes=5)
 | `src/pygame_view.py` | Render the environment, manual play (`run_manual`), policy playback with CSV metrics (`run_simulated`) |
 | `src/metadata.py` | Shared types: `Collision` enum, `Transition` and `TransitionBatch` dataclasses |
 | `src/logs.py` | Resolves log file names under `./logs` |
-| `src/config_loader.py` | Imports `config.py` and checks it selects a full setup |
+| `src/config_loader.py` | Imports `config.py` (or `$RLSNAKE_CONFIG`) and checks it selects a full setup |
+| `src/env_settings.py` | `EnvSettings` and `Rewards` dataclasses that configs use to describe the environment |
+| `src/naming.py` | Builds run names from a config and the full settings record saved next to the log |
 | `src/agents/base.py` | Abstract `Agent` interface (`act`, `observe`, `learn`, `end_episode`, `metrics`, weights and state checkpointing) |
 | `src/agents/dqn_agent.py` | DQN agent: online + target network, Huber loss, periodic hard target updates |
 | `src/buffers/base.py` | Abstract `Buffer` interface |
@@ -123,15 +158,16 @@ run_simulated(env, lambda obs: agent.act(obs, explore=False), episodes=5)
 | `src/networks/base.py` | Abstract `QNetwork` interface |
 | `src/networks/mlp_network.py` | 11 -> 64 -> 32 -> 3 MLP that outputs raw Q-values |
 | `src/networks/cnn_network.py` | Two 3x3 conv layers + MLP head for (C, H, W) board planes |
-| `src/observations/` | Observation encoders: `FeatureObservation`, `GridObservation`, `PlaneObservation` |
+| `src/observations/` | Observation encoders: `FeatureObservation`, `GridObservation`, `PlaneObservation`, `EgocentricPlaneObservation` |
 | `src/policies/base.py` | Abstract `Policy` interface (plus `end_episode`, `metrics` and state hooks) |
 | `src/policies/greedy_policy.py` | Picks the action with the highest Q-value |
 | `src/policies/epsilon_greedy_policy.py` | Random action with probability epsilon (decayed once per episode), otherwise greedy |
 
 ## Environment
 
-`SnakeEnv(grid_size, start_size, start_pos, start_horizontal=True, seed=67, max_steps=1000, observation=None)`
-follows the Gymnasium convention: `reset()` returns `(observation, info)` and
+`SnakeEnv(grid_size, start_size, start_pos, start_horizontal=True, seed=67, max_steps=1000, observation=None, rewards=None)`
+or `SnakeEnv.from_settings(EnvSettings(...), seed=..., observation=...)` (what
+configs use; the snake starts mid-board) follows the Gymnasium convention: `reset()` returns `(observation, info)` and
 `step(action)` returns `(observation, reward, terminated, truncated, info)`.
 
 **Actions** are relative to the snake's heading: `0` forward, `1` turn right, `2` turn left.
@@ -145,9 +181,12 @@ gives its shape:
   categorical, so don't feed it straight into a conv
 - `PlaneObservation`: (4, H+2, W+2) wall/body/head/food planes for a CNN; the
   body plane fades from head to tail
+- `EgocentricPlaneObservation`: the same planes rotated so the heading always
+  points up, matching the relative actions (square boards only)
 
-**Rewards** (class constants on `SnakeEnv`): `-0.01` per step, `+10` for food,
-`-10` for dying, and an extra `+10` for filling the board.
+**Rewards** come from `Rewards(step, food, death, win)`, set per config through
+`ENV = EnvSettings(rewards=Rewards(...))`. Defaults: `-0.01` per step, `+10` for
+food, `-10` for dying, and an extra `+10` for filling the board.
 
 **Episode end**: `terminated` on wall/self collision or a full board, `truncated` after
 `max_steps` steps. The reason is reported in `info["termination_reason"]`.

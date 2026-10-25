@@ -5,6 +5,7 @@ from numbers import Integral
 
 import numpy as np
 
+from .env_settings import EnvSettings, Rewards
 from .metadata import Collision
 from .observations import FeatureObservation, ObservationEncoder, ObservationSpec
 
@@ -15,14 +16,6 @@ class SnakeEnv:
     ACTION_LEFT = 2
     NUM_ACTIONS = 3
 
-    # Initial reward configuration.
-    # A loop the agent expects to last forever is worth STEP_REWARD / (1 - gamma);
-    # at -0.01 that was ~free, so circling beat any risky path to the food.
-    STEP_REWARD = -0.1
-    FOOD_REWARD = 10.0
-    DEATH_REWARD = -10.0
-    WIN_BONUS = 10.0
-
     def __init__(
         self,
         grid_size: tuple[int, int],
@@ -32,6 +25,7 @@ class SnakeEnv:
         seed: int = 67,
         max_steps: int | None = 1000,
         observation: ObservationEncoder | None = None,
+        rewards: Rewards | None = None,
     ):
         width, height = grid_size
 
@@ -79,6 +73,8 @@ class SnakeEnv:
             None if max_steps is None else int(max_steps)
         )
 
+        self.rewards = Rewards() if rewards is None else rewards
+
         self.seed = seed
         self._random = random.Random(seed)
 
@@ -91,6 +87,25 @@ class SnakeEnv:
         self.observation.check_compatible(self)
 
         self.reset()
+
+    @classmethod
+    def from_settings(
+        cls,
+        settings: EnvSettings,
+        *,
+        seed: int,
+        observation: ObservationEncoder | None = None,
+    ) -> SnakeEnv:
+        """Build the env a config describes; the snake starts mid-board."""
+        return cls(
+            settings.grid_size,
+            settings.start_size,
+            tuple(size // 2 for size in settings.grid_size),
+            seed=seed,
+            max_steps=settings.max_steps,
+            observation=observation,
+            rewards=settings.rewards,
+        )
 
     @property
     def observation_spec(self) -> ObservationSpec:
@@ -262,7 +277,7 @@ class SnakeEnv:
 
         self.steps += 1
 
-        reward = self.STEP_REWARD
+        reward = self.rewards.step
         terminated = False
         truncated = False
         ate_food = False
@@ -274,7 +289,7 @@ class SnakeEnv:
         if collision is not None:
             # Keep the last valid snake configuration.
             terminated = True
-            reward = self.DEATH_REWARD
+            reward = self.rewards.death
 
             if collision == Collision.WALL:
                 reason = "wall_collision"
@@ -290,14 +305,14 @@ class SnakeEnv:
                 self.snake = [new_head, *self.snake]
                 self.score += 1
                 ate_food = True
-                reward = self.FOOD_REWARD
+                reward = self.rewards.food
 
                 # Check victory BEFORE spawning another food item.
                 if len(self.snake) == self.grid_width * self.grid_height:
                     self.food = None
                     terminated = True
                     reason = "board_filled"
-                    reward += self.WIN_BONUS
+                    reward += self.rewards.win
                 else:
                     self.food = self._generate_food()
 

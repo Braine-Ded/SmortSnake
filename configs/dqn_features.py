@@ -8,7 +8,7 @@ call `make_env` and `make_agent`. Select this config from config.py with:
 
 import torch
 
-from src import SnakeEnv
+from src import EnvSettings, SnakeEnv
 from src.agents import DQNAgent
 from src.buffers import ReplayBuffer
 from src.networks import MLP
@@ -16,18 +16,26 @@ from src.observations import FeatureObservation
 from src.policies import EpsilonGreedyPolicy, GreedyPolicy
 
 # What train.py / eval.py / play.py rely on. Everything else is private.
-__all__ = ["NAME", "SEED", "MAX_EPISODES", "make_env", "make_agent"]
+__all__ = [
+    "NAME", "SEED", "MAX_EPISODES", "make_env", "make_agent",
+    "ALGO", "POLICY", "NET", "OBS", "ARCH", "GAMMA", "ENV",
+]
 
 NAME = "dqn_features"   # stored in checkpoints so a resume can't mix configs
+
+# ---------- Run name labels (see src/naming.py) ----------
+ALGO = "dqn"
+POLICY = "egp"
+NET = "mlp"
+OBS = "feat"
 
 # ---------- Reproducibility ----------
 # Global seed: drives the env, replay buffer, exploration policy, network init
 # and python/numpy/torch RNGs in train.py (eval/play/tests derive from it too).
 SEED = 67
 
-# ---------- Environment ----------
-GRID_SIZE = (10, 10)
-START_SIZE = 3
+# ---------- Environment (grid, episode limit, rewards) ----------
+ENV = EnvSettings()
 
 # ---------- Optimisation ----------
 LEARNING_RATE = 1e-3
@@ -46,20 +54,21 @@ TARGET_UPDATE_FREQ = 200       # in gradient updates
 # ---------- Run length ----------
 MAX_EPISODES = 5000
 
+# ---------- MLP Architecture ----------
+MLP_HIDDEN1_SIZE = 64
+MLP_HIDDEN2_SIZE = 32
+ARCH = (MLP_HIDDEN1_SIZE, MLP_HIDDEN2_SIZE)
+
 
 def make_env(seed: int) -> SnakeEnv:
-    return SnakeEnv(
-        GRID_SIZE,
-        START_SIZE,
-        tuple(size // 2 for size in GRID_SIZE),
-        seed=seed,
-        observation=FeatureObservation(),
-    )
+    return SnakeEnv.from_settings(ENV, seed=seed, observation=FeatureObservation())
 
 
 def make_agent(env: SnakeEnv, device: torch.device, seed: int) -> DQNAgent:
     model = MLP(
         input_size=env.observation_spec.size,
+        hidden1_size=MLP_HIDDEN1_SIZE,
+        hidden2_size=MLP_HIDDEN2_SIZE,
         output_size=env.NUM_ACTIONS,
     ).to(device)
 

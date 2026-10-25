@@ -1,5 +1,6 @@
 import argparse
 import csv
+import json
 import random
 from collections import deque
 from pathlib import Path
@@ -10,15 +11,20 @@ import torch
 from src import Transition
 from src.config_loader import load_config
 from src.logs import ask_log_path, log_path as resolve_log_path
+from src.naming import run_name, run_settings
 
 # The whole setup (env, observation, network, optimizer, loss, buffer, policy,
 # agent) comes from the config selected in config.py; nothing is built here.
 config = load_config()
 
 SEED = config.SEED
+RUN = run_name(config)          # e.g. dqn_egp_cnn_ego_95_10k_016032064_sp010
+SETTINGS = run_settings(config)
 # One folder per config, so training one setup never overwrites another's weights.
 CHECKPOINT_DIR = Path("checkpoints") / config.NAME
-STATE_PATH = CHECKPOINT_DIR / "state.pt"   # full training state, used by --resume
+BEST_PATH = CHECKPOINT_DIR / f"best_{RUN}.pt"
+FINAL_PATH = CHECKPOINT_DIR / f"final_{RUN}.pt"
+STATE_PATH = CHECKPOINT_DIR / f"state_{RUN}.pt"   # full training state, used by --resume
 LOG_EVERY = 10      # print a progress line every N episodes
 SAVE_EVERY = 50     # write the resumable state every N episodes
 WINDOW = 100        # moving-average window used for "best model" tracking
@@ -45,6 +51,7 @@ def save_state(path, *, episode, agent, recent_scores, best_avg_score):
     torch.save(
         {
             "config": config.NAME,
+            "settings": SETTINGS,                    # checked on --resume
             "episode": episode,                      # last *completed* episode
             "agent": agent.state_dict(),
             "recent_scores": list(recent_scores),
@@ -61,7 +68,7 @@ def main():
     if args.log:
         log_path = resolve_log_path(args.log)
     else:
-        log_path = ask_log_path(f"training_{config.NAME}.csv")
+        log_path = ask_log_path(f"train_{RUN}.csv")
 
     # Seed every global RNG (network init, anything using random/np.random).
     # The env, buffer and policy additionally get their own private seeded RNGs.
@@ -85,6 +92,21 @@ def main():
                 f"Cannot resume: {resume_path} was trained with config "
                 f"'{state['config']}', but config.py selects '{config.NAME}'."
             )
+        # MAX_EPISODES may grow to extend a run (and the config file may be
+        # renamed); anything else would silently change the experiment halfway
+        # through (e.g. a different reward).
+        saved = state.get("settings")  # absent in states saved before run names
+        if saved is not None:
+            allowed = {"MAX_EPISODES", "config_module"}
+            changed = sorted(
+                key for key in saved.keys() | SETTINGS.keys()
+                if key not in allowed and saved.get(key) != SETTINGS.get(key)
+            )
+            if changed:
+                raise SystemExit(
+                    f"Cannot resume: {resume_path} was trained with different "
+                    f"settings: {', '.join(changed)}."
+                )
         start_episode = state["episode"] + 1
         print(f"Resuming {config.NAME} from {resume_path} "
               f"(completed episode {state['episode']})")
@@ -120,7 +142,12 @@ def main():
     append = args.resume is not None and log_path.exists() and log_path.stat().st_size > 0
     completed = start_episode - 1  # last fully finished episode
 
-    print(f"Training config: {config.NAME}")
+    # Every setting of this run next to its log, including those not in the name.
+    log_path.with_suffix(".json").write_text(
+        json.dumps({"run": RUN, **SETTINGS}, indent=2) + "\n", encoding="utf-8",
+    )
+
+    print(f"Training config: {config.NAME}  |  run: {RUN}")
 
     with log_path.open("a" if append else "w", newline="", encoding="utf-8") as log_file:
         writer = csv.DictWriter(log_file, fieldnames=log_fields)
@@ -183,7 +210,7 @@ def main():
                 # Keep the best model, judged on a full moving-average window.
                 if len(recent_scores) == WINDOW and avg_score > best_avg_score:
                     best_avg_score = avg_score
-                    torch.save(agent.weights(), CHECKPOINT_DIR / "best.pt")
+                    torch.save(agent.weights(), BEST_PATH)
 
                 if episode % SAVE_EVERY == 0:
                     save_state(
@@ -206,7 +233,7 @@ def main():
             print("\nTraining interrupted; saving the current state.")
 
         finally:
-            torch.save(agent.weights(), CHECKPOINT_DIR / "final.pt")
+            torch.save(agent.weights(), FINAL_PATH)
             save_state(
                 STATE_PATH, episode=completed, agent=agent,
                 recent_scores=recent_scores, best_avg_score=best_avg_score,

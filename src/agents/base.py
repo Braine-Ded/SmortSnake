@@ -22,7 +22,7 @@ class Agent(ABC):
 
     @abstractmethod
     def weights(self) -> dict:
-        """What is needed to act: saved as best.pt / final.pt and loaded by eval."""
+        """What is needed to act: saved as best_<run>.pt / final_<run>.pt and loaded by eval."""
 
     @abstractmethod
     def load_weights(self, weights: dict) -> None:

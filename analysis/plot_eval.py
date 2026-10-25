@@ -7,9 +7,9 @@ Usage (from anywhere):
     python analysis/plot_eval.py --out analysis/plots --show
 
 Rows are grouped by their `checkpoint` column, so one log file can compare
-several checkpoints. Interrupted episodes are ignored. Outputs (to --out):
-eval_score.png, eval_score_distribution.png, eval_steps.png, eval_endings.png
-and eval_dashboard.png.
+several checkpoints. Interrupted episodes are ignored. Outputs (to --out): the
+dashboard as <log name>.png, plus eval_score.png, eval_score_distribution.png,
+eval_steps.png and eval_endings.png in <log name>/.
 Requires: numpy, matplotlib  (pip install matplotlib)
 """
 
@@ -132,7 +132,8 @@ def main() -> None:
         raise SystemExit(f"CSV not found: {path}")
 
     runs = load_runs(path)
-    args.out.mkdir(parents=True, exist_ok=True)
+    panel_dir = args.out / path.stem
+    panel_dir.mkdir(parents=True, exist_ok=True)
 
     for name, data in runs.items():
         score = data["score"]
@@ -148,7 +149,7 @@ def main() -> None:
         draw(ax, runs)
         fig.tight_layout()
 
-        out = args.out / f"{filename}.png"
+        out = panel_dir / f"{filename}.png"
         fig.savefig(out, dpi=150)
         print(f"saved {out}")
 
@@ -164,7 +165,7 @@ def main() -> None:
     fig.suptitle(f"Evaluation summary: {path.stem}", fontsize=14)
     fig.tight_layout()
 
-    dashboard = args.out / "eval_dashboard.png"
+    dashboard = args.out / f"{path.stem}.png"
     fig.savefig(dashboard, dpi=150)
     print(f"saved {dashboard}")
 

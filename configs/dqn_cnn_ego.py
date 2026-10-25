@@ -8,23 +8,33 @@ Select this config from config.py with:
 
 import torch
 
-from src import SnakeEnv
+from src import EnvSettings, Rewards, SnakeEnv
 from src.agents import DQNAgent
 from src.buffers import ReplayBuffer
 from src.networks import CNN
 from src.observations import EgocentricPlaneObservation
 from src.policies import EpsilonGreedyPolicy, GreedyPolicy
 
-__all__ = ["NAME", "SEED", "MAX_EPISODES", "make_env", "make_agent"]
+__all__ = [
+    "NAME", "SEED", "MAX_EPISODES", "make_env", "make_agent",
+    "ALGO", "POLICY", "NET", "OBS", "ARCH", "GAMMA", "ENV",
+]
 
 NAME = "dqn_cnn_ego"
+
+# ---------- Run name labels (see src/naming.py) ----------
+ALGO = "dqn"
+POLICY = "egp"
+NET = "cnn"
+OBS = "ego"
 
 # ---------- Reproducibility ----------
 SEED = 67
 
-# ---------- Environment ----------
-GRID_SIZE = (10, 10)
-START_SIZE = 3
+# ---------- Environment (grid, episode limit, rewards) ----------
+# A loop the agent expects to last forever is worth rewards.step / (1 - gamma);
+# at the default -0.01 that was ~free, so circling beat any risky path to food.
+ENV = EnvSettings(rewards=Rewards(step=-0.1))
 
 # ---------- Optimisation ----------
 LEARNING_RATE = 1e-4
@@ -51,15 +61,12 @@ MAX_EPISODES = 10_000
 CNN_CONV1_CHANNELS = 16
 CNN_CONV2_CHANNELS = 32
 CNN_HIDDEN_SIZE = 64
+ARCH = (CNN_CONV1_CHANNELS, CNN_CONV2_CHANNELS, CNN_HIDDEN_SIZE)
 
 
 def make_env(seed: int) -> SnakeEnv:
-    return SnakeEnv(
-        GRID_SIZE,
-        START_SIZE,
-        tuple(size // 2 for size in GRID_SIZE),
-        seed=seed,
-        observation=EgocentricPlaneObservation(GRID_SIZE),
+    return SnakeEnv.from_settings(
+        ENV, seed=seed, observation=EgocentricPlaneObservation(ENV.grid_size),
     )
 
 

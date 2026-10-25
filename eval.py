@@ -2,23 +2,27 @@
 
 Examples (run from the project root):
 
-    python eval.py                                    # asks for a model (blank = best.pt), 10 episodes
+    python eval.py                                    # asks for a model (blank = best_<run>.pt), 10 episodes
     python eval.py --checkpoint my_model              # checkpoints/<config>/my_model.pt, no prompt
     python eval.py --episodes 25 --speed 3            # more episodes, 3x playback speed
     python eval.py --speed 0.5                        # slow motion
     python eval.py --headless --episodes 500          # no window: as fast as possible
-    python eval.py --checkpoint best final            # both from checkpoints/<config>/
+    python eval.py --checkpoint best_<run> final_<run> # both from checkpoints/<config>/
+    python eval.py --headless --episodes 500 --log eval_<run>   # no prompts at all
     python eval.py --no-log                           # no CSV (and no file-name prompt)
 
 The env and agent come from the config selected in config.py, so evaluate a
 checkpoint under the config that trained it.
 
-Without --checkpoint you are asked for a model name (blank = best.pt). Names are
+<run> is the selected config's run name (see src/naming.py).
+
+Without --checkpoint you are asked for a model name (blank = best_<run>.pt). Names are
 looked up under ./checkpoints/<config NAME> (".pt" is added if missing), or used
 as a path if the file exists as given. A missing model is an error; there is no silent
 substitution, so results are never logged under the wrong model.
 
-You are asked for a log file name (blank = eval.csv, paths are relative to ./logs).
+Without --log you are asked for a log file name (blank = eval_<run>.csv, paths are
+relative to ./logs).
 The agent plays greedily (no exploration). Every run appends one row per
 episode to the log CSV, tagged with the checkpoint name, so evaluations of
 different checkpoints can be compared in a single file.
@@ -35,7 +39,8 @@ import torch
 
 from src.agents import Agent
 from src.config_loader import load_config
-from src.logs import ask_log_path
+from src.logs import ask_log_path, log_path as resolve_log_path
+from src.naming import run_name
 
 # The env and agent are built by the config selected in config.py, so a
 # checkpoint must be evaluated under the config it was trained with.
@@ -43,7 +48,9 @@ config = load_config()
 
 ROOT = Path(__file__).resolve().parent
 CHECKPOINT_DIR = ROOT / "checkpoints" / config.NAME
-DEFAULT_CHECKPOINT_NAME = "best.pt"
+RUN = run_name(config)
+DEFAULT_CHECKPOINT_NAME = f"best_{RUN}.pt"
+DEFAULT_LOG_NAME = f"eval_{RUN}.csv"
 
 # Evaluation uses a different food sequence than training: config.SEED + offset.
 # (With the default SEED = 67 this gives the old fixed eval seed of 123.)
@@ -75,6 +82,10 @@ def parse_args() -> argparse.Namespace:
         "--seed", type=int, default=None,
         help="environment seed (each checkpoint sees the same food sequence); "
              f"default: config.SEED + {EVAL_SEED_OFFSET}",
+    )
+    parser.add_argument(
+        "--log", default=None,
+        help=f"log file name under ./logs (skips the prompt; default {DEFAULT_LOG_NAME})",
     )
     parser.add_argument("--no-log", action="store_true", help="do not write a CSV")
     args = parser.parse_args()
@@ -198,7 +209,12 @@ def main() -> None:
 
     checkpoints = [resolve_checkpoint(name) for name in names]
 
-    log_path = None if args.no_log else ask_log_path("eval.csv")
+    if args.no_log:
+        log_path = None
+    elif args.log:
+        log_path = resolve_log_path(args.log)
+    else:
+        log_path = ask_log_path(DEFAULT_LOG_NAME)
 
     if not args.headless:
         # Imported lazily so --headless works without opening pygame at all.
