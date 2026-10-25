@@ -16,7 +16,9 @@ class SnakeEnv:
     NUM_ACTIONS = 3
 
     # Initial reward configuration.
-    STEP_REWARD = -0.01
+    # A loop the agent expects to last forever is worth STEP_REWARD / (1 - gamma);
+    # at -0.01 that was ~free, so circling beat any risky path to the food.
+    STEP_REWARD = -0.1
     FOOD_REWARD = 10.0
     DEATH_REWARD = -10.0
     WIN_BONUS = 10.0

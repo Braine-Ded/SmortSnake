@@ -1,4 +1,5 @@
 from .base import ObservationEncoder
+from .egocentric_plane_observation import EgocentricPlaneObservation
 from .feature_observation import FeatureObservation
 from .grid_observation import Cell, GridObservation
 from .plane_observation import PlaneObservation
@@ -11,4 +12,5 @@ __all__ = [
     "GridObservation",
     "Cell",
     "PlaneObservation",
+    "EgocentricPlaneObservation",
 ]
