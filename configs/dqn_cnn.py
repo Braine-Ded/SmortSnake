@@ -46,6 +46,11 @@ TARGET_UPDATE_FREQ = 500       # in gradient updates
 # ---------- Run length ----------
 MAX_EPISODES = 10_000
 
+# ---------- CNN Architecture ----------
+CNN_CONV1_CHANNELS = 16
+CNN_CONV2_CHANNELS = 32
+CNN_HIDDEN_SIZE = 64
+
 
 def make_env(seed: int) -> SnakeEnv:
     return SnakeEnv(
@@ -60,6 +65,9 @@ def make_env(seed: int) -> SnakeEnv:
 def make_agent(env: SnakeEnv, device: torch.device, seed: int) -> DQNAgent:
     model = CNN(
         input_shape=env.observation_spec.shape,
+        conv1_channels=CNN_CONV1_CHANNELS,
+        conv2_channels=CNN_CONV2_CHANNELS,
+        hidden_size=CNN_HIDDEN_SIZE,
         output_size=env.NUM_ACTIONS,
     ).to(device)
 

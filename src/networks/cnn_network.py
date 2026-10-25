@@ -11,9 +11,9 @@ class CNN(nn.Module, QNetwork):
     def __init__(
         self,
         input_shape,
-        conv1_channels=32,
-        conv2_channels=64,
-        hidden_size=256,
+        conv1_channels=16,
+        conv2_channels=32,
+        hidden_size=64,
         output_size=3,
     ):
         super().__init__()
