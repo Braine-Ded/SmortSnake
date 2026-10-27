@@ -58,23 +58,8 @@ config than the one that trained it fails with a clear error.
 ### Run names
 
 Every run is named from its config (`src/naming.py`), and logs, checkpoints and
-plots all use that name:
-
-```
-{algo}_{policy}_{net}_{obs}_{gamma}_{episodes}_{arch}[_{deviation}...]
-dqn_egp_mlp_feat_9_5k_064032
-dqn_egp_cnn_ego_95_10k_016032064_sp010
-```
-
-- `gamma`: only the digits after the decimal point (0.9 -> `9`, 0.95 -> `95`)
-- `episodes`: in thousands (10000 -> `10k`)
-- `arch`: 3 digits per layer (CNN conv1, conv2, hidden; MLP hidden1, hidden2)
-- deviations: `ENV` fields that differ from the defaults, e.g. `sp010` (step
-  penalty 0.10), `fr20` (food reward), `dr5` (death penalty), `wb50` (win
-  bonus), `ms500` (max steps), `gs8x8` (grid), `ss4` (start size)
-
-Settings outside the name (learning rate, epsilon schedule, ...) are written to
-`logs/train_<run>.json` next to the training log.
+plots all use that name, e.g. `dqn_egp_cnn_ego_95_10k_016032064_sp010`. See
+[NAMING.md](NAMING.md) for the full format.
 
 ## Usage
 
@@ -162,6 +147,7 @@ run_simulated(env, lambda obs: agent.act(obs, explore=False), episodes=5)
 | `src/policies/base.py` | Abstract `Policy` interface (plus `end_episode`, `metrics` and state hooks) |
 | `src/policies/greedy_policy.py` | Picks the action with the highest Q-value |
 | `src/policies/epsilon_greedy_policy.py` | Random action with probability epsilon (decayed once per episode), otherwise greedy |
+| `src/policies/softmax_policy.py` | Samples actions from softmax(Q / temperature) (temperature decayed once per episode) |
 
 ## Environment
 
