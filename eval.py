@@ -10,6 +10,7 @@ Examples (run from the project root):
     python eval.py --checkpoint best_<run> final_<run> # both from checkpoints/<config>/
     python eval.py --headless --episodes 500 --log eval_<run>   # no prompts at all
     python eval.py --no-log                           # no CSV (and no file-name prompt)
+    python eval.py --append --log eval_<run>          # add to the existing log to compare runs
 
 The env and agent come from the config selected in config.py, so evaluate a
 checkpoint under the config that trained it.
@@ -23,9 +24,10 @@ substitution, so results are never logged under the wrong model.
 
 Without --log you are asked for a log file name (blank = eval_<run>.csv, paths are
 relative to ./logs).
-The agent plays greedily (no exploration). Every run appends one row per
-episode to the log CSV, tagged with the checkpoint name, so evaluations of
-different checkpoints can be compared in a single file.
+The agent plays greedily (no exploration). Each run writes one row per
+episode to the log CSV, tagged with the checkpoint name. An existing log is
+replaced unless --append is given; with --append (or several --checkpoint
+models in one run) the plots compare the checkpoints in that file.
 """
 
 from __future__ import annotations
@@ -88,6 +90,10 @@ def parse_args() -> argparse.Namespace:
         help=f"log file name under ./logs (skips the prompt; default {DEFAULT_LOG_NAME})",
     )
     parser.add_argument("--no-log", action="store_true", help="do not write a CSV")
+    parser.add_argument(
+        "--append", action="store_true",
+        help="add to an existing log instead of replacing it (to compare runs)",
+    )
     args = parser.parse_args()
 
     if args.episodes < 1:
@@ -215,6 +221,10 @@ def main() -> None:
         log_path = resolve_log_path(args.log)
     else:
         log_path = ask_log_path(DEFAULT_LOG_NAME)
+
+    # Start the log fresh so old runs don't show up as a comparison in the plots.
+    if log_path is not None and not args.append:
+        log_path.unlink(missing_ok=True)
 
     if not args.headless:
         # Imported lazily so --headless works without opening pygame at all.
